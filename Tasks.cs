@@ -53,7 +53,6 @@ namespace ForExamAlgorithms
                 for (int j = i + 1; j < arr.Length; j++)
                     if (arr[j] < arr[min])
                         min = j;
-
                 int temp = arr[i];
                 arr[i] = arr[min];
                 arr[min] = temp;
@@ -92,26 +91,18 @@ namespace ForExamAlgorithms
         // Сортировка Шелла. Сложность O(n^2). Элементы сортируются с уменьшающимся расстоянием между ними
         public static void ShellSort(int[] arr)
         {
-            var d = arr.Length / 2;
-            while (d >= 1)
+            int n = arr.Length;
+            for (int d = n / 2; d > 0; d /= 2)
             {
-                for (var i = d; i < arr.Length; i++)
+                for (int i = d; i < n; i++)
                 {
-                    var j = i;
-                    while (j >= d && arr[j - d] > arr[j])
+                    for (int j = i - d; j >= 0 && arr[j] > arr[j + d]; j -= d)
                     {
-                        Swap(ref arr[j], ref arr[j - d]);
-                        j -= d;
+                        int x = arr[j];
+                        arr[j] = arr[j + d];
+                        arr[j + d] = x;
                     }
                 }
-                d /= 2;
-            }
-
-            void Swap(ref int a, ref int b)
-            {
-                var t = a;
-                a = b;
-                b = t;
             }
         }
         // Алгоритм бинарного поиска. O(log2 n). В два раза сужаем область поиска.
@@ -153,7 +144,7 @@ namespace ForExamAlgorithms
             }
         }
         // Внешняя сортировка.
-        public static void SortByFiles(string pathToSort)
+        public static void DirectionalMerge(string pathToSort)
         {
             int numOfLines = 0;
             using (var reader = new StreamReader(pathToSort))
@@ -237,6 +228,150 @@ namespace ForExamAlgorithms
                     }
                 }
             }
+        }
+        public static void NaturalMerge(string pathToSort)
+        {
+            File.Create("A.txt").Close();
+            File.Create("B.txt").Close();
+
+            bool fileSorted = false;
+            while (true)    // в условии внутри будет выход
+            {
+                fileSorted = true;                                  // начинаем проверку на отсортированность и запись в два файла
+                using ( var reader = new StreamReader(pathToSort))
+                {
+                    using var writerA = new StreamWriter("A.txt");
+                    using var writerB = new StreamWriter("B.txt");
+                    bool switcher = false;
+                    int num;
+                    int? lastNum = null;
+                    while (!reader.EndOfStream)
+                    {
+                        num = int.Parse(reader.ReadLine() ?? throw new Exception());
+                        if (lastNum.HasValue && lastNum > num)      // если это не первое число и оно больше предыдущего, меняем файл для записывания
+                        {
+                            fileSorted = false;                     // запись ведется в другой файл, значит файл не отсортирован
+                            switcher = !switcher;
+                        }
+                        if (switcher) writerA.WriteLine(num);
+                        else writerB.WriteLine(num);
+                        lastNum = num;
+                    }
+                }
+
+                if (!fileSorted)
+                    File.Create(pathToSort).Close();                    // Перезаписываем исходник
+                else                                                    // Выходим из вайла
+                {
+                    File.Delete("A.txt");
+                    File.Delete("B.txt");
+                    break;
+                }
+
+                using (var writer = new StreamWriter(pathToSort))
+                {
+                    using var readerA = new StreamReader("A.txt");
+                    using var readerB = new StreamReader("B.txt");
+
+                    int? A = int.Parse(readerA.ReadLine() ?? throw new Exception()), // если один из них пустой, то файл отсортирован, но при этом он должен выйти в условии выше
+                         B = int.Parse(readerB.ReadLine() ?? throw new Exception());
+                    int lastWritten = int.MinValue; // в любом случае будет перезаписан на 1 элемент, просто не дает в реф засунуть
+                    while (A != null || B != null)
+                    {
+                        if (A == null && B != null)
+                            Write(ref B, readerB, writer, ref lastWritten);
+                        else if (B == null && A != null)
+                            Write(ref A, readerA, writer, ref lastWritten);
+                        else
+                        {
+                            if (A < B || (A > lastWritten && B < lastWritten && B < A))
+                                Write(ref A, readerA, writer, ref lastWritten);
+                            else
+                                Write(ref B, readerB, writer, ref lastWritten);
+                        }
+
+                    }
+                    void Write(ref int? num, StreamReader reader, StreamWriter writer, ref int last)
+                    {
+                        writer.WriteLine(num);
+                        last = num.GetValueOrDefault();
+                        var line = reader.ReadLine();
+                        if (line == null)
+                            num = null;
+                        else
+                            num = int.Parse(line);
+                    }
+                }
+            }
+        }
+        // Многопутевая сортировка
+        public static void ManyDirectionalMerge(string pathToSort)
+        {
+            var helpFiles = new List<string>();
+            using (var reader = new StreamReader(pathToSort))
+            {
+                uint name = 0;              // Имя файлов
+                int? num = null;            // Текущее число из исходника
+                Func<int> readNum = () =>
+                {
+                    if (num == null)
+                        num = int.Parse(reader.ReadLine());
+                    return num.Value;
+                };
+                // Заполняем файлы сериями
+                do
+                {
+                    int? lastNum = null;
+                    helpFiles.Add($"{name}.txt");
+                    using (var writer = new StreamWriter($"{name}.txt"))
+                    {
+                        name++;
+                        while (!reader.EndOfStream && (lastNum == null || lastNum < readNum()))
+                        {
+                            writer.WriteLine(readNum());
+                            lastNum = readNum();
+                            num = null;         // Говорим функции выше, что мы приняли число
+                        }
+                    }
+                } while (!reader.EndOfStream);
+            }
+            
+            var readers = new List<StreamReader>();
+            for (int i = 0; i < helpFiles.Count; i++)
+                readers.Add(new StreamReader(helpFiles[i]));
+
+            var dict = new Dictionary<StreamReader, int>();
+
+            File.Create(pathToSort).Close();
+            using (var writer = new StreamWriter(pathToSort))
+            {
+                while (readers.Count > 0)
+                {
+                    foreach (var reader in readers.ToArray())       // Проходимся во всем ридерам и сдвигаем указатель, где взяли значение. Также удаляем пустые ридеры
+                    {
+                        if (!dict.ContainsKey(reader))
+                        {
+                            if (reader.EndOfStream)
+                            {
+                                reader.Close();
+                                readers.Remove(reader);
+                            }   
+                            else
+                            {
+                                dict.Add(reader, int.Parse(reader.ReadLine() ?? throw new Exception()));
+                            }
+                        }
+                    }
+                    if (dict.Count > 0)     // Находим мин. элемент в словаре, записываем в ответ и удаляем из словаря
+                    {
+                        var min = dict.MinBy(x => x.Value);
+                        dict.Remove(min.Key);
+                        writer.WriteLine(min.Value);
+                    }
+                }
+            }
+            foreach (var name in helpFiles)
+                File.Delete(name);
         }
         // Сортировка двоичным деревом. Сложность O(n*log2 n). Элементы располагаются деревом, слева < число, справа >= число
         private class TreeNode
@@ -328,7 +463,10 @@ namespace ForExamAlgorithms
                 j = 0;
                 for (i = 0; i < arr.Length; i++)
                 {
-                    bool move = (arr[i] << shift) >= 0;
+                    var before = Convert.ToString(arr[i], toBase: 2);
+                    var a = arr[i] << shift;
+                    var after = Convert.ToString(a, toBase: 2);
+                    bool move = (a) >= 0;
                     if (shift == 0 ? !move : move)
                         arr[i - j] = arr[i];
                     else
@@ -748,7 +886,7 @@ namespace ForExamAlgorithms
                     else
                     {
                         int newSet = 0;                         // ни в одном множестве нет этих вершин - создаем новое множество
-                        while (nodeSets.ContainsValue(newSet))   // ищем уникальный номер для нового множества
+                        while (nodeSets.ContainsValue(newSet))  // ищем уникальный номер для нового множества
                             newSet++;
                         nodeSets.Add(node1, newSet);
                         nodeSets.Add(node2, newSet);
@@ -791,4 +929,7 @@ namespace ForExamAlgorithms
             return resultEdges;
         }
     }
+
+
+
 }
